@@ -1,0 +1,18 @@
+{
+  "name": "page-pulse",
+  "version": "1.0.0",
+  "description": "Page Pulse — audits any URL for status, speed, SEO basics, and accessibility gaps.",
+  "type": "module",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "express": "^4.19.2"
+  }
+}

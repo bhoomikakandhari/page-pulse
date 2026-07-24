@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Page Pulse — audit any URL</title>
+<meta name="description" content="Page Pulse checks the vitals of any webpage: status, speed, and basic SEO/accessibility signals." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --void: #0b0f14;
+    --panel: #121822;
+    --panel-raised: #161d29;
+    --hairline: #263041;
+    --text-primary: #e7edf5;
+    --text-muted: #8b98ac;
+    --pulse-live: #33e19a;
+    --pulse-warn: #f5a83c;
+    --pulse-flat: #ff5c7a;
+    --radius: 10px;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    background: var(--void);
+    color: var(--text-primary);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+  }
+
+  ::selection { background: var(--pulse-live); color: #06110c; }
+
+  a { color: var(--pulse-live); }
+
+  .scanlines {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(255,255,255,0.012) 0px,
+      rgba(255,255,255,0.012) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    z-index: 1;
+    mix-blend-mode: overlay;
+  }
+
+  .wrap {
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 48px 24px 40px;
+  }
+
+  header.hero {
+    text-align: left;
+    margin-bottom: 28px;
+  }
+
+  .eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--pulse-live);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .eyebrow .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--pulse-live);
+    box-shadow: 0 0 8px var(--pulse-live);
+    animation: blink 1.6s ease-in-out infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.25; }
+  }
+
+  h1 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: clamp(32px, 6vw, 44px);
+    line-height: 1.05;
+    margin: 0 0 12px;
+    letter-spacing: -0.01em;
+  }
+
+  h1 span { color: var(--pulse-live); }
+
+  .sub {
+    color: var(--text-muted);
+    font-size: 15px;
+    max-width: 52ch;
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  /* --- Waveform monitor --- */
+  .monitor {
+    margin-top: 32px;
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .monitor-strip {
+    height: 100px;
+    position: relative;
+    background:
+      linear-gradient(var(--panel-raised) 1px, transparent 1px) 0 0 / 100% 25px,
+      var(--panel);
+  }
+
+  .monitor-strip svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .pulse-path {
+    fill: none;
+    stroke: var(--pulse-live);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    filter: drop-shadow(0 0 4px currentColor);
+    transition: stroke 0.4s ease;
+  }
+
+  .monitor-strip.state-loading .pulse-path {
+    animation: sweep 1.1s linear infinite;
+  }
+
+  @keyframes sweep {
+    from { stroke-dashoffset: 0; }
+    to { stroke-dashoffset: -240; }
+  }
+
+  .monitor-readout {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+    border-top: 1px solid var(--hairline);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .monitor-readout .status-word {
+    font-weight: 600;
+    letter-spacing: 0.06em;
+  }
+
+  .status-word.ok { color: var(--pulse-live); }
+  .status-word.warn { color: var(--pulse-warn); }
+  .status-word.error { color: var(--pulse-flat); }
+
+  
+  form {
+    display: flex;
+    gap: 10px;
+    padding: 16px;
+    border-top: 1px solid var(--hairline);
+  }
+
+  input[type="text"] {
+    flex: 1;
+    background: var(--void);
+    border: 1px solid var(--hairline);
+    color: var(--text-primary);
+    border-radius: 6px;
+    padding: 12px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+
+  input[type="text"]::placeholder { color: #4b586e; }
+
+  input[type="text"]:focus {
+    border-color: var(--pulse-live);
+    box-shadow: 0 0 0 3px rgba(51, 225, 154, 0.15);
+  }
+
+  button {
+    background: var(--pulse-live);
+    color: #06110c;
+    border: none;
+    border-radius: 6px;
+    padding: 12px 20px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: transform 0.1s ease, background 0.15s ease;
+    white-space: nowrap;
+  }
+
+  button:hover { background: #4cf0ab; }
+  button:active { transform: scale(0.97); }
+  button:disabled {
+    background: var(--hairline);
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  button:focus-visible, input:focus-visible, a:focus-visible {
+    outline: 2px solid var(--pulse-live);
+    outline-offset: 2px;
+  }
+
+ 
+  .report {
+    margin-top: 24px;
+    display: none;
+  }
+
+  .report.visible { display: block; }
+
+  .report-error {
+    background: rgba(255, 92, 122, 0.08);
+    border: 1px solid rgba(255, 92, 122, 0.35);
+    color: var(--pulse-flat);
+    border-radius: var(--radius);
+    padding: 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .vitals-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1px;
+    background: var(--hairline);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .vital {
+    background: var(--panel);
+    padding: 16px;
+  }
+
+  .vital .label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+
+  .vital .value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 20px;
+    font-weight: 500;
+    line-height: 1.2;
+    word-break: break-word;
+  }
+
+  .vital .value.small {
+    font-size: 13px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 400;
+    color: var(--text-primary);
+  }
+
+  .vital .value.flag-warn { color: var(--pulse-warn); }
+  .vital .value.flag-ok { color: var(--pulse-live); }
+
+  .vital.wide { grid-column: 1 / -1; }
+
+  footer {
+    margin-top: 48px;
+    padding-top: 20px;
+    border-top: 1px solid var(--hairline);
+    font-size: 12.5px;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  footer a { text-decoration: none; border-bottom: 1px dotted var(--pulse-live); }
+
+  @media (max-width: 520px) {
+    form { flex-direction: column; }
+    button { width: 100%; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .eyebrow .dot, .monitor-strip.state-loading .pulse-path { animation: none; }
+  }
+</style>
+</head>
+<body>
+<div class="scanlines"></div>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="eyebrow"><span class="dot"></span> live diagnostic</div>
+    <h1>Page <span>Pulse</span></h1>
+    <p class="sub">Drop in a URL. We'll check its vitals — status, speed, and the SEO and accessibility basics — and tell you straight if something's wrong.</p>
+  </header>
+
+  <div class="monitor">
+    <div class="monitor-strip" id="monitorStrip">
+      <svg viewBox="0 0 480 100" preserveAspectRatio="none">
+        <path id="pulsePath" class="pulse-path" d="" />
+      </svg>
+    </div>
+    <div class="monitor-readout">
+      <span id="readoutLabel">awaiting input</span>
+      <span class="status-word" id="readoutStatus">— idle —</span>
+    </div>
+    <form id="auditForm">
+      <input
+        type="text"
+        id="urlInput"
+        placeholder="example.com or https://example.com/page"
+        autocomplete="off"
+        spellcheck="false"
+        required
+      />
+      <button type="submit" id="submitBtn">Check pulse</button>
+    </form>
+  </div>
+
+  <div class="report" id="report"></div>
+
+  <footer>
+    Built for <a href="https://digitalheroesco.com" target="_blank" rel="noopener">Digital Heroes Training Task</a>
+  </footer>
+
+</div>
+
+<script>
+  const form = document.getElementById('auditForm');
+  const urlInput = document.getElementById('urlInput');
+  const submitBtn = document.getElementById('submitBtn');
+  const strip = document.getElementById('monitorStrip');
+  const pulsePath = document.getElementById('pulsePath');
+  const readoutLabel = document.getElementById('readoutLabel');
+  const readoutStatus = document.getElementById('readoutStatus');
+  const reportEl = document.getElementById('report');
+
+  
+  function flatLine() {
+    return 'M0,50 L480,50';
+  }
+
+  function sweepLine() {
+    let d = 'M0,50 ';
+    const points = 24;
+    for (let i = 0; i <= points; i++) {
+      const x = (480 / points) * i;
+      const isBeat = i % 6 === 0;
+      const y = isBeat ? (i % 12 === 0 ? 12 : 88) : 50 + Math.sin(i) * 4;
+      d += `L${x},${y} `;
+    }
+    return d + 'L480,50';
+  }
+
+  function vitalsLine(responseTimeMs, healthy) {
+    
+    if (!healthy) {
+      return 'M0,50 L180,50 L200,10 L220,90 L240,50 L480,50';
+    }
+    const speedFactor = Math.min(responseTimeMs / 2500, 1); 
+    const amplitude = 15 + speedFactor * 55;
+    const segments = 8;
+    let d = 'M0,50 ';
+    for (let i = 0; i < segments; i++) {
+      const baseX = (480 / segments) * i;
+      d += `L${baseX + 14},50 L${baseX + 22},${50 - amplitude} L${baseX + 30},${50 + amplitude * 0.6} L${baseX + 40},50 `;
+    }
+    return d + 'L480,50';
+  }
+
+  function setStrip(pathD, colorVar, animating) {
+    pulsePath.setAttribute('d', pathD);
+    pulsePath.style.stroke = colorVar;
+    strip.classList.toggle('state-loading', animating);
+  }
+
+  setStrip(flatLine(), 'var(--text-muted)', false);
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const rawUrl = urlInput.value.trim();
+    if (!rawUrl) return;
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Checking…';
+    readoutLabel.textContent = rawUrl;
+    readoutStatus.textContent = '— reading —';
+    readoutStatus.className = 'status-word';
+    setStrip(sweepLine(), 'var(--pulse-live)', true);
+    reportEl.classList.remove('visible');
+    reportEl.innerHTML = '';
+
+    try {
+      const res = await fetch('/api/audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: rawUrl }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        readoutStatus.textContent = 'FLATLINE';
+        readoutStatus.classList.add('error');
+        setStrip(vitalsLine(0, false), 'var(--pulse-flat)', false);
+        renderError(data, res.status);
+        return;
+      }
+
+      const slow = data.responseTimeMs > 1500;
+      readoutStatus.textContent = slow ? 'WEAK PULSE' : 'STRONG PULSE';
+      readoutStatus.classList.add(slow ? 'warn' : 'ok');
+      setStrip(
+        vitalsLine(data.responseTimeMs, true),
+        slow ? 'var(--pulse-warn)' : 'var(--pulse-live)',
+        false
+      );
+      renderReport(data);
+    } catch (err) {
+      readoutStatus.textContent = 'FLATLINE';
+      readoutStatus.classList.add('error');
+      setStrip(vitalsLine(0, false), 'var(--pulse-flat)', false);
+      renderError({ error: 'Could not reach the audit service. Check your connection and try again.' });
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Check pulse';
+    }
+  });
+
+  function renderError(data, status) {
+    reportEl.innerHTML = `
+      <div class="report-error">
+        <strong>Couldn't complete the audit${status ? ` (HTTP ${status})` : ''}:</strong><br/>
+        ${escapeHtml(data.error || 'Unknown error.')}
+      </div>
+    `;
+    reportEl.classList.add('visible');
+  }
+
+  function renderReport(d) {
+    const altFlag = d.imagesMissingAlt > 0 ? 'flag-warn' : 'flag-ok';
+    reportEl.innerHTML = `
+      <div class="vitals-grid">
+        <div class="vital">
+          <div class="label">HTTP status</div>
+          <div class="value ${d.ok ? 'flag-ok' : 'flag-warn'}">${d.httpStatus}</div>
+        </div>
+        <div class="vital">
+          <div class="label">Response time</div>
+          <div class="value ${d.responseTimeMs > 1500 ? 'flag-warn' : 'flag-ok'}">${d.responseTimeMs} ms</div>
+        </div>
+        <div class="vital">
+          <div class="label">H1 count</div>
+          <div class="value">${d.h1Count}</div>
+        </div>
+        <div class="vital">
+          <div class="label">Images missing alt</div>
+          <div class="value ${altFlag}">${d.imagesMissingAlt} / ${d.imageCount}</div>
+        </div>
+        <div class="vital">
+          <div class="label">Approx. word count</div>
+          <div class="value">${d.approxWordCount.toLocaleString()}</div>
+        </div>
+        <div class="vital">
+          <div class="label">Content type</div>
+          <div class="value small">${escapeHtml(d.contentType || '—')}</div>
+        </div>
+        <div class="vital wide">
+          <div class="label">Title</div>
+          <div class="value small">${escapeHtml(d.title || '— missing —')}</div>
+        </div>
+        <div class="vital wide">
+          <div class="label">Meta description</div>
+          <div class="value small">${escapeHtml(d.metaDescription || '— missing —')}</div>
+        </div>
+      </div>
+    `;
+    reportEl.classList.add('visible');
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+</script>
+</body>
+</html>
