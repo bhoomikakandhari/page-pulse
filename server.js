@@ -1,43 +1,22 @@
 import express from "express";
-import * as cheerio from "cheerio";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseUrl, extractFields } from "./lib/audit.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
 const FETCH_TIMEOUT_MS = 10_000;
-const MAX_BYTES = 5 * 1024 * 1024; 
+const MAX_BYTES = 5 * 1024 * 1024; // 5MB cap so huge pages can't hang the audit
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-function parseUrl(raw) {
-  if (typeof raw !== "string" || raw.trim().length === 0) {
-    throw new Error("URL is required.");
-  }
-  let candidate = raw.trim();
-  if (!/^https?:\/\//i.test(candidate)) {
-    candidate = `https://${candidate}`;
-  }
-  let parsed;
-  try {
-    parsed = new URL(candidate);
-  } catch {
-    throw new Error("That doesn't look like a valid URL.");
-  }
-  if (!["http:", "https:"].includes(parsed.protocol)) {
-    throw new Error("Only http:// and https:// URLs are supported.");
-  }
-  if (!parsed.hostname || !parsed.hostname.includes(".")) {
-    throw new Error("That doesn't look like a valid domain.");
-  }
-  return parsed;
-}
 
 async function readBodyCapped(response, maxBytes) {
   const reader = response.body?.getReader?.();
   if (!reader) {
+    // Environments without a streaming body (rare) — fall back directly.
     return await response.text();
   }
   const chunks = [];
@@ -112,23 +91,7 @@ async function auditUrl(targetUrl) {
     };
   }
 
-  const $ = cheerio.load(html);
-
-  const title = $("title").first().text().trim() || null;
-  const metaDescription =
-    $('meta[name="description"]').attr("content")?.trim() || null;
-
-  const h1Count = $("h1").length;
-
-  const images = $("img");
-  let imagesMissingAlt = 0;
-  images.each((_, el) => {
-    const alt = $(el).attr("alt");
-    if (alt === undefined || alt.trim() === "") imagesMissingAlt += 1;
-  });
-
-  const bodyText = $("body").text().replace(/\s+/g, " ").trim();
-  const wordCount = bodyText.length > 0 ? bodyText.split(" ").length : 0;
+  const fields = extractFields(html);
 
   return {
     url: targetUrl.toString(),
@@ -136,12 +99,7 @@ async function auditUrl(targetUrl) {
     ok: response.ok,
     responseTimeMs,
     contentType,
-    title,
-    metaDescription,
-    h1Count,
-    imageCount: images.length,
-    imagesMissingAlt,
-    approxWordCount: wordCount,
+    ...fields,
   };
 }
 
@@ -160,6 +118,7 @@ app.post("/api/audit", async (req, res) => {
     }
     return res.status(200).json(report);
   } catch (err) {
+   
     return res.status(502).json({
       url: targetUrl.toString(),
       error: err.message || "Unexpected error auditing that URL.",
@@ -172,6 +131,7 @@ app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.use((req, res) => {
   res.status(404).json({ error: "Not found." });
 });
+
 
 app.use((err, _req, res, _next) => {
   console.error("Unhandled error:", err);
